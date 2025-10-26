@@ -1,0 +1,70 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import MinMaxScaler, OrdinalEncoder
+from sklearn.model_selection import train_test_split, cross_val_score, KFold, StratifiedKFold
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import f1_score
+#part 1
+
+df = pd.read_csv('wdbc.data')
+ct = ColumnTransformer(transformers=[("drop_col2", "drop", [0])], remainder="passthrough")
+df_dropped = ct.fit_transform(df)
+df_dropped = pd.DataFrame(df_dropped)
+dimensions=df_dropped.shape
+colnum = dimensions[1] - 1
+plt.figure(figsize=(20,10))
+for i in range(1, colnum):
+  plt.subplot(3,10,i+1)
+  plt.boxplot(df_dropped[i])
+  plt.title(f"Attribute: {i+1}")
+  plt.tight_layout()
+plt.show()
+#Part 2
+pd.set_option('future.no_silent_downcasting', True) # make it so that no warning pops up for future changes in data types
+df_filled = df_dropped
+
+for i in range(1, colnum):
+    CategoryMean = df_dropped.groupby(0)[i].transform('mean') #Groups it by B or M, each column one by one, then puts the mean for each row dependent on the whether b or m
+    df_filled[i] = df_dropped[i].fillna(CategoryMean)
+
+normalization = ColumnTransformer(transformers=[
+    ('categorical', OrdinalEncoder(), [df_filled.columns[0]]),
+    ('numerical', MinMaxScaler(), list(df_filled.columns[1:]))])
+
+df_normalized = normalization.fit_transform(df_filled)
+df_normalized = pd.DataFrame(df_normalized)
+
+X_train, X_test, y_train, y_test = train_test_split(df_normalized.iloc[:, 1:],
+ df_normalized.iloc[:, 0], test_size=0.1, stratify=df_normalized.iloc[:, 0], random_state=42)
+
+#Part 3
+Skf = StratifiedKFold(n_splits=10)
+fig, ax = plt.subplots(figsize=(10,7))
+kfold_f1_mean=[]
+kvalues = []
+for i in range(1,11):
+  trainingpipeline = Pipeline([('k-NN', KNeighborsClassifier(n_neighbors=i))])
+  scores = cross_val_score(trainingpipeline, X_train, y_train, cv=Skf, scoring = 'f1')
+  kvalues.append(i)
+  kfold_f1_mean.append(scores.mean())
+  print(f"{scores} Mean: {scores.mean()}")
+BestNeighbours = kfold_f1_mean.index(max(kfold_f1_mean)) + 1
+testingpipeline = Pipeline([('k-NN', KNeighborsClassifier(n_neighbors=BestNeighbours))])
+testscores = cross_val_score(testingpipeline, X_test, y_test, cv=Skf, scoring='f1')
+print(testscores.mean())
+#ax.plot(kvalues, accuracies, color='red', marker='o')
+ax.plot(kvalues, kfold_f1_mean, color='blue', marker='^')
+#ax.plot(kvalues, Macro_F1_Scores, color='green', marker='s')
+ax.set_title("Classification report of KNN in relation to n_neighbors")
+ax.set_xlabel("n_neighbors")
+ax.set_ylabel("Performance")
+plt.show()
+
+
+
